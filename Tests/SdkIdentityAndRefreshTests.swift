@@ -1,0 +1,173 @@
+import XCTest
+@testable import AbrovaPush
+
+final class SdkIdentityTests: XCTestCase {
+
+    func testSdkVersionMatchesPodspecs() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        for name in ["AbrovaPushSDK.podspec", "AbrovaPushSDKExtension.podspec"] {
+            let spec = try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+            XCTAssertTrue(
+                spec.contains("s.version          = '\(AbrovaPush.sdkVersion)'"),
+                "\(name) version does not match AbrovaPush.sdkVersion (\(AbrovaPush.sdkVersion))"
+            )
+        }
+    }
+
+    func testDefaultIdentityIsNativeIos() {
+        let config = AbrovaPushConfig(apiKey: "k")
+        XCTAssertEqual(config.reportedSdkName, "ios")
+        XCTAssertEqual(config.reportedSdkVersion, AbrovaPush.sdkVersion)
+        XCTAssertEqual(config.sdkHeaderValue, "ios/\(AbrovaPush.sdkVersion)")
+        XCTAssertTrue(config.autoRefresh)
+    }
+
+    func testWrapperIdentityReplacesNative() {
+        let config = AbrovaPushConfig.builder(apiKey: "k").wrapperSdk(name: "flutter", version: "0.1.16").build()
+        XCTAssertEqual(config.sdkHeaderValue, "flutter/0.1.16 ios/\(AbrovaPush.sdkVersion)")
+    }
+
+    func testWrapperIdentityNeedsBothFields() {
+        let config = AbrovaPushConfig(apiKey: "k", wrapperSdkName: "flutter")
+        XCTAssertEqual(config.reportedSdkName, "ios")
+    }
+
+    func testSanitize() {
+        XCTAssertEqual(AbrovaPushSDKInfo.sanitize("react native!"), "reactnative")
+        XCTAssertEqual(AbrovaPushSDKInfo.sanitize(String(repeating: "a", count: 40))?.count, 32)
+        XCTAssertNil(AbrovaPushSDKInfo.sanitize("  "))
+        XCTAssertEqual(AbrovaPushSDKInfo.sanitize("1.0.0-beta+2"), "1.0.0-beta+2")
+    }
+}
+
+final class RegistrationRefreshTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let base = RegistrationFingerprint(
+        appVersion: "2.0", appBuild: "18", sdkIdentity: "ios/0.1.12",
+        apnsToken: "aa", voipToken: nil, userId: "u1"
+    )
+
+    private func reason(
+        hasRegistered: Bool = true,
+        ago: TimeInterval = 60,
+        stored: RegistrationFingerprint? = nil,
+        current: RegistrationFingerprint? = nil
+    ) -> RegistrationRefresh.Reason? {
+        RegistrationRefresh.reason(
+            hasRegistered: hasRegistered,
+            lastSuccess: now.addingTimeInterval(-ago),
+            now: now,
+            stored: stored ?? base,
+            current: current ?? base
+        )
+    }
+
+    func testNeverRegisteredSkips() { XCTAssertNil(reason(hasRegistered: false, ago: 1e9)) }
+    func testUnchangedRecentSkips() { XCTAssertNil(reason()) }
+    func testIntervalElapsed() { XCTAssertEqual(reason(ago: 24 * 3600), .intervalElapsed) }
+    func testClockBackwards() { XCTAssertEqual(reason(ago: -3600), .intervalElapsed) }
+
+    func testMissingRecord() {
+        XCTAssertEqual(
+            RegistrationRefresh.reason(hasRegistered: true, lastSuccess: nil, now: now, stored: nil, current: base),
+            .neverRecorded
+        )
+    }
+
+    func testAppVersionOrBuildChanged() {
+        var c = base; c.appVersion = "2.1"
+        XCTAssertEqual(reason(current: c), .appVersionChanged)
+        c = base; c.appBuild = "19"
+        XCTAssertEqual(reason(current: c), .appVersionChanged)
+    }
+
+    func testSdkChanged() {
+        var c = base; c.sdkIdentity = "flutter/0.1.16"
+        XCTAssertEqual(reason(current: c), .sdkChanged)
+    }
+
+    func testTokenChanged() {
+        var c = base; c.apnsToken = "bb"
+        XCTAssertEqual(reason(current: c), .tokenChanged)
+        c = base; c.voipToken = "vv"
+        XCTAssertEqual(reason(current: c), .tokenChanged)
+    }
+
+    func testUnknownTokenIsNotAChange() {
+        var c = base; c.apnsToken = nil
+        XCTAssertNil(reason(current: c))
+    }
+
+    func testUserChanged() {
+        var c = base; c.userId = nil
+        XCTAssertEqual(reason(current: c), .userChanged)
+    }
+}
+
+final class DeliveryReceiptTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suite = "ir.abrova.push.tests.receipts"
+
+    override func setUp() {
+        UserDefaults().removePersistentDomain(forName: suite)
+        defaults = UserDefaults(suiteName: suite)
+    }
+
+    override func tearDown() {
+        UserDefaults().removePersistentDomain(forName: suite)
+    }
+
+    func testClaimOnce() {
+        let store = DeliveryReceiptStore(defaults: defaults)
+        XCTAssertTrue(store.claim("m1"))
+        XCTAssertFalse(store.claim("m1"))
+    }
+
+    func testClaimSharedAcrossInstances() {
+        // App and extension each build their own store over the App Group.
+        XCTAssertTrue(DeliveryReceiptStore(defaults: defaults).claim("m1"))
+        XCTAssertFalse(DeliveryReceiptStore(defaults: defaults).claim("m1"))
+    }
+
+    func testReleaseAllowsRetry() {
+        let store = DeliveryReceiptStore(defaults: defaults)
+        XCTAssertTrue(store.claim("m1"))
+        store.release("m1")
+        XCTAssertTrue(store.claim("m1"))
+    }
+
+    func testBoundedEvictsOldest() {
+        let store = DeliveryReceiptStore(defaults: defaults, capacity: 3)
+        for id in ["a", "b", "c", "d"] { XCTAssertTrue(store.claim(id)) }
+        XCTAssertFalse(store.contains("a"))
+        XCTAssertTrue(store.contains("d"))
+        XCTAssertEqual(defaults.stringArray(forKey: DeliveryReceiptStore.storageKey)?.count, 3)
+    }
+
+    func testDisplayedIdsAreKeptApartFromDeliveryReceipts() {
+        // A message whose receipt was already sent must still be shown once.
+        let receipts = DeliveryReceiptStore(defaults: defaults)
+        let displayed = DeliveryReceiptStore(defaults: defaults, capacity: 500, key: DeliveryReceiptStore.displayedStorageKey)
+        XCTAssertTrue(receipts.claim("m1"))
+        XCTAssertTrue(displayed.claim("m1"))
+        XCTAssertFalse(displayed.claim("m1"))
+        XCTAssertEqual(defaults.stringArray(forKey: DeliveryReceiptStore.displayedStorageKey), ["m1"])
+    }
+
+    func testTransientClassification() {
+        XCTAssertTrue(DeliveryReceiptSender.isTransient(statusCode: 503, error: nil))
+        XCTAssertTrue(DeliveryReceiptSender.isTransient(statusCode: 429, error: nil))
+        XCTAssertFalse(DeliveryReceiptSender.isTransient(statusCode: 400, error: nil))
+        XCTAssertFalse(DeliveryReceiptSender.isTransient(statusCode: 404, error: nil))
+        XCTAssertTrue(DeliveryReceiptSender.isTransient(statusCode: nil, error: URLError(.notConnectedToInternet)))
+        XCTAssertEqual(DeliveryReceiptSender.backoff(forRetry: 1), 1)
+        XCTAssertEqual(DeliveryReceiptSender.backoff(forRetry: 2), 2)
+        XCTAssertEqual(DeliveryReceiptSender.backoff(forRetry: 10), 8)
+    }
+
+    func testMessageIdExtraction() {
+        XCTAssertEqual(AbrovaPushServiceExtension.messageId(from: ["abrova_push_message": ["messageId": "x"]]), "x")
+        XCTAssertEqual(AbrovaPushServiceExtension.messageId(from: ["messageId": "y"]), "y")
+        XCTAssertNil(AbrovaPushServiceExtension.messageId(from: ["aps": [:]]))
+    }
+}
