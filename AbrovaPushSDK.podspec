@@ -27,7 +27,7 @@ Pod::Spec.new do |s|
   s.resource_bundles = { 'AbrovaPushSDK_Privacy' => ['Sources/PrivacyInfo.xcprivacy'] }
 
   # Dependencies
-  s.dependency 'PNProtocol', '~> 0.2', '>= 0.2.2'
+  s.dependency 'AbrovaPNProtocol', '~> 0.2', '>= 0.2.2'
   s.dependency 'CocoaMQTT', '~> 2.1'
 
   # Frameworks required

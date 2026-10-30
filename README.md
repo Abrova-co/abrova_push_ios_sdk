@@ -31,11 +31,13 @@ Select version `0.1.19` or later.
 
 ### CocoaPods
 
-The SDK and the protocol package it uses both come from Abrova Center:
+Add Abrova Center's spec repository at the top of your `Podfile` (the second `source` line keeps public pods working), then the pod:
 
 ```ruby
-pod 'PNProtocol', :git => 'https://center.abrova.ir/abrova/pn-protocol-ios.git', :tag => '0.2.2'
-pod 'AbrovaPushSDK', :git => 'https://center.abrova.ir/abrova/abrova-push-ios-sdk.git', :tag => '0.1.19'
+source 'https://center.abrova.ir/abrova/specs.git'
+source 'https://cdn.cocoapods.org/'
+
+pod 'AbrovaPushSDK', '~> 0.1.19'
 ```
 
 ## Quick Start
@@ -270,8 +272,8 @@ For calling apps (Jitsi, WebRTC), add the [AbrovaPush VoIP SDK](https://github.c
 // Swift Package Manager
 .package(url: "https://center.abrova.ir/abrova/abrova-push-voip-ios-sdk.git", from: "0.1.2")
 
-// CocoaPods
-pod 'AbrovaPushVoip', :git => 'https://center.abrova.ir/abrova/abrova-push-voip-ios-sdk.git', :tag => '0.1.2'
+// CocoaPods (with the two Abrova Center `source` lines above)
+pod 'AbrovaPushVoip', '~> 0.1'
 ```
 
 ```swift
