@@ -51,11 +51,24 @@ internal class NotificationManager: NSObject {
         content.title = message.getLocalizedTitle()
         content.body = message.getLocalizedBody()
 
-        // Sound
-        if let soundName = message.sound {
+        // Sound: the message's, else its channel's. `none` shows the notification without a sound.
+        let soundName = message.sound ?? (message.channel?.sound == "default" ? nil : message.channel?.sound)
+        if soundName == "none" {
+            content.sound = nil
+        } else if let soundName = soundName {
             content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
         } else {
             content.sound = .default
+        }
+
+        // The channel's interruption level (iOS 15+): passive, active or time-sensitive.
+        if #available(iOS 15.0, *), let level = message.channel?.ios {
+            switch level {
+            case "passive": content.interruptionLevel = .passive
+            case "time-sensitive": content.interruptionLevel = .timeSensitive
+            case "active": content.interruptionLevel = .active
+            default: break
+            }
         }
 
         // Thread ID for grouping

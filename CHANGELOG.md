@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20] - 2026-11-06
+
+### Added
+- Notification channels: `AbrovaPushMessage.channelId` and `channel`. When the SDK shows a message itself, the
+  channel's interruption level (iOS 15+: passive, active, time-sensitive) and sound apply. Over APNs, Abrova sets the
+  interruption level. `sound: "none"` now shows the notification without a sound.
+
 ## [0.1.19] - 2026-10-29
 
 ### Fixed

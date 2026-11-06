@@ -83,6 +83,10 @@ public struct AbrovaPushMessage: Codable {
     public let collapseKey: String?
     public let category: String?
 
+    // Notification channel: a Console channel key (its definition comes with it) or an id the app uses itself.
+    public let channelId: String?
+    public let channel: AbrovaPushChannel?
+
     // Priority & TTL
     public let priority: String?
     public let ttl: Int?
@@ -115,7 +119,9 @@ public struct AbrovaPushMessage: Codable {
         localizations: [LocalizedContent]? = nil,
         timezone: String? = nil,
         messageId: String? = nil,
-        campaignId: String? = nil
+        campaignId: String? = nil,
+        channelId: String? = nil,
+        channel: AbrovaPushChannel? = nil
     ) {
         self.title = title
         self.body = body
@@ -137,6 +143,8 @@ public struct AbrovaPushMessage: Codable {
         self.timezone = timezone
         self.messageId = messageId
         self.campaignId = campaignId
+        self.channelId = channelId
+        self.channel = channel
     }
 
     /// Parse message from JSON string
@@ -206,7 +214,9 @@ public struct AbrovaPushMessage: Codable {
             localizations: localizations,
             timezone: payload["timezone"] as? String,
             messageId: payload["messageId"] as? String,
-            campaignId: payload["campaignId"] as? String
+            campaignId: payload["campaignId"] as? String,
+            channelId: payload["channelId"] as? String,
+            channel: AbrovaPushChannel(dictionary: payload["channel"] as? [String: Any])
         )
     }
 
@@ -243,6 +253,8 @@ public struct AbrovaPushMessage: Codable {
         if let timezone = timezone { dict["timezone"] = timezone }
         if let messageId = messageId { dict["messageId"] = messageId }
         if let campaignId = campaignId { dict["campaignId"] = campaignId }
+        if let channelId = channelId { dict["channelId"] = channelId }
+        if let channel = channel { dict["channel"] = channel.toDictionary() }
 
         return dict
     }
@@ -323,6 +335,8 @@ public struct AbrovaPushMessage: Codable {
 
         messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
         campaignId = try container.decodeIfPresent(String.self, forKey: .campaignId)
+        channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
+        channel = try? container.decodeIfPresent(AbrovaPushChannel.self, forKey: .channel)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -333,6 +347,7 @@ public struct AbrovaPushMessage: Codable {
         case priority, ttl
         case localizations, timezone
         case messageId, campaignId
+        case channelId, channel
     }
 }
 
@@ -426,5 +441,50 @@ private struct DynamicCodingKey: CodingKey {
     init?(intValue: Int) {
         self.stringValue = String(intValue)
         self.intValue = intValue
+    }
+}
+
+/// A notification channel defined in Abrova Console, as a message carries it. iOS has no channels: the server sets the
+/// interruption level on APNs, and the SDK uses `ios` and `sound` when it shows a message itself.
+public struct AbrovaPushChannel: Codable, Equatable {
+    public let id: String
+    public let v: Int?
+    /// `high`, `default` or `low`.
+    public let importance: String?
+    public let vibrate: Bool?
+    /// `default`, `none`, or a sound in the app bundle.
+    public let sound: String?
+    /// `passive`, `active` or `time-sensitive`.
+    public let ios: String?
+
+    public init(id: String, v: Int? = nil, importance: String? = nil, vibrate: Bool? = nil, sound: String? = nil, ios: String? = nil) {
+        self.id = id
+        self.v = v
+        self.importance = importance
+        self.vibrate = vibrate
+        self.sound = sound
+        self.ios = ios
+    }
+
+    init?(dictionary: [String: Any]?) {
+        guard let d = dictionary, let id = d["id"] as? String else { return nil }
+        self.init(
+            id: id,
+            v: d["v"] as? Int,
+            importance: d["importance"] as? String,
+            vibrate: d["vibrate"] as? Bool,
+            sound: d["sound"] as? String,
+            ios: d["ios"] as? String
+        )
+    }
+
+    public func toDictionary() -> [String: Any] {
+        var d: [String: Any] = ["id": id]
+        if let v = v { d["v"] = v }
+        if let importance = importance { d["importance"] = importance }
+        if let vibrate = vibrate { d["vibrate"] = vibrate }
+        if let sound = sound { d["sound"] = sound }
+        if let ios = ios { d["ios"] = ios }
+        return d
     }
 }

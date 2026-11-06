@@ -27,7 +27,7 @@ In Xcode: File → Add Package Dependencies → Enter:
 https://center.abrova.ir/abrova/abrova-push-ios-sdk.git
 ```
 
-Select version `0.1.19` or later.
+Select version `0.1.20` or later.
 
 ### CocoaPods
 
@@ -37,7 +37,7 @@ Add Abrova Center's spec repository at the top of your `Podfile` (the second `so
 source 'https://center.abrova.ir/abrova/specs.git'
 source 'https://cdn.cocoapods.org/'
 
-pod 'AbrovaPushSDK', '~> 0.1.19'
+pod 'AbrovaPushSDK', '~> 0.1.20'
 ```
 
 ## Quick Start
