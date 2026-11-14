@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AbrovaPushSDK'
-  s.version          = '0.1.20'
+  s.version          = '0.1.21'
   s.summary          = 'Abrova Push Notification SDK for iOS'
   s.description      = <<-DESC
     Abrova Push is a comprehensive push notification SDK for iOS with support for:
@@ -31,7 +31,7 @@ Pod::Spec.new do |s|
   s.dependency 'CocoaMQTT', '~> 2.1'
 
   # Frameworks required
-  s.frameworks = 'UIKit', 'UserNotifications', 'PushKit', 'CallKit', 'Network', 'Security'
+  s.frameworks = 'UIKit', 'UserNotifications', 'PushKit', 'CallKit', 'Network', 'Security', 'Intents'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

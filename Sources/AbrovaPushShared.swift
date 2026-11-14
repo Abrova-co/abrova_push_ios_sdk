@@ -14,7 +14,7 @@ internal enum AbrovaPushSDKInfo {
 
     /// Single source of truth for the SDK version. Must match both podspecs;
     /// `SdkIdentityTests` fails when they drift.
-    static let version = "0.1.20"
+    static let version = "0.1.21"
 
     /// Header carrying the SDK identity on every request.
     static let headerName = "X-Abrova-SDK"

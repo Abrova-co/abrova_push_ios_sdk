@@ -140,6 +140,17 @@ internal class NotificationManager: NSObject {
     }
 
     private func scheduleNotification(content: UNMutableNotificationContent, message: AbrovaPushMessage, completion: ((Error?) -> Void)?) {
+        // A chat message (data.conversationId): grouped by conversation, with the sender (iOS 15+).
+        if AbrovaPushConversation.info(from: content.userInfo, fallbackSender: content.title) != nil {
+            AbrovaPushConversation.content(for: content) { [weak self] converted in
+                self?.addRequest(content: converted, message: message, completion: completion)
+            }
+            return
+        }
+        addRequest(content: content, message: message, completion: completion)
+    }
+
+    private func addRequest(content: UNNotificationContent, message: AbrovaPushMessage, completion: ((Error?) -> Void)?) {
         let identifier = message.messageId ?? UUID().uuidString
 
         // Use collapse key to replace existing notification

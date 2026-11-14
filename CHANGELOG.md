@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.21] - 2026-11-15
+
+### Added
+- Chat-style (communication) notifications: `AbrovaPushConversation` and
+  `AbrovaPushServiceExtension.conversationContent(for:completion:)`. A message whose data has a `conversationId` is
+  grouped by conversation, and on iOS 15+ shows the sender's photo and name (INSendMessageIntent). Keys: `conversationId` (required), `senderName`, `senderId`, `senderAvatarUrl`, `conversationTitle`, `conversationIsGroup`.
+  The photo needs the app's Communication Notifications capability and `INSendMessageIntent` in
+  `NSUserActivityTypes`; messages shown by the SDK itself get the same treatment. Messages without `conversationId`
+  look as before.
+
 ## [0.1.20] - 2026-11-06
 
 ### Added

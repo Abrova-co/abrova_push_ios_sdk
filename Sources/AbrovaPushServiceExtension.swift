@@ -50,6 +50,14 @@ import UserNotifications
 /// }
 /// ```
 ///
+/// To show chat messages chat-style (sender photo, grouped by conversation), pass the content through
+/// ``conversationContent(for:completion:)`` before handing it back:
+///
+/// ```swift
+/// AbrovaPushServiceExtension.didReceive(request, apiKey: "ab_live_…", appGroup: "group.com.example.app")
+/// AbrovaPushServiceExtension.conversationContent(for: request) { contentHandler($0) }
+/// ```
+///
 /// The extension has a short execution budget, so the report is fire-and-forget
 /// and never delays `contentHandler`. A missed report costs a delivery
 /// statistic, never a notification.
@@ -105,6 +113,15 @@ public enum AbrovaPushServiceExtension {
             sdkHeader: identity,
             store: store
         )
+    }
+
+    /// The notification as a conversation notification (see ``AbrovaPushConversation``), or the request's content
+    /// unchanged when its data has no `conversationId`. Calls `completion` once, within about 5 seconds.
+    public static func conversationContent(
+        for request: UNNotificationRequest,
+        completion: @escaping (UNNotificationContent) -> Void
+    ) {
+        AbrovaPushConversation.content(for: request.content, completion: completion)
     }
 
     /// Pull the message id out of the APNs payload.

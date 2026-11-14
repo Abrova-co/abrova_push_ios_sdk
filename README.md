@@ -27,7 +27,7 @@ In Xcode: File → Add Package Dependencies → Enter:
 https://center.abrova.ir/abrova/abrova-push-ios-sdk.git
 ```
 
-Select version `0.1.20` or later.
+Select version `0.1.21` or later.
 
 ### CocoaPods
 
@@ -37,7 +37,7 @@ Add Abrova Center's spec repository at the top of your `Podfile` (the second `so
 source 'https://center.abrova.ir/abrova/specs.git'
 source 'https://cdn.cocoapods.org/'
 
-pod 'AbrovaPushSDK', '~> 0.1.20'
+pod 'AbrovaPushSDK', '~> 0.1.21'
 ```
 
 ## Quick Start
@@ -257,6 +257,36 @@ func application(_ application: UIApplication,
 ### Wrapper SDKs
 
 `wrapperSdkName` / `wrapperSdkVersion` exist for Abrova's official Flutter and React Native wrappers, which report their own identity instead of the native one. Apps should not set them. `AbrovaPush.sdkVersion` returns the native SDK version.
+
+## Conversation Notifications
+
+A message whose data has a `conversationId` is grouped by conversation and, on iOS 15+, shows the sender's photo and
+name (a communication notification). Messages without `conversationId` look as before. Abrova Chat sends these keys
+for you.
+
+| Key | |
+|---|---|
+| `conversationId` | Required. One conversation per id (your chat or room id). |
+| `senderName` | Who wrote the message (else the title). |
+| `senderId` | Tells two senders with the same name apart. |
+| `senderAvatarUrl` | An https image for the sender's photo. |
+| `conversationTitle` | The group's name (shown for groups). |
+| `conversationIsGroup` | `true` for a group. |
+
+Setup:
+
+1. App target: add the **Communication Notifications** capability, and `INSendMessageIntent` to `NSUserActivityTypes`
+   in its Info.plist.
+2. Notification Service Extension (with `pod 'AbrovaPushSDKExtension'`):
+
+```swift
+override func didReceive(_ request: UNNotificationRequest,
+                         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+    AbrovaPushServiceExtension.conversationContent(for: request) { contentHandler($0) }
+}
+```
+
+Without step 1 the notifications are still grouped, without the photo. Guide: https://abrova.ir/docs/push/conversation-notifications
 
 ## Requirements
 

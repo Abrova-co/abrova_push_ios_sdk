@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AbrovaPushSDKExtension'
-  s.version          = '0.1.20'
+  s.version          = '0.1.21'
   s.summary          = 'Delivery confirmation for Abrova Push, for a Notification Service Extension.'
 
   s.description      = <<-DESC
@@ -22,8 +22,8 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '13.0'
   s.swift_version = '5.0'
 
-  s.source_files = ['Sources/AbrovaPushServiceExtension.swift', 'Sources/AbrovaPushShared.swift']
-  s.frameworks   = 'UserNotifications'
+  s.source_files = ['Sources/AbrovaPushServiceExtension.swift', 'Sources/AbrovaPushShared.swift', 'Sources/AbrovaPushConversation.swift']
+  s.frameworks   = 'UserNotifications', 'Intents'
   s.resource_bundles = { 'AbrovaPushSDKExtension_Privacy' => ['Privacy/Extension/PrivacyInfo.xcprivacy'] }
 
   s.pod_target_xcconfig = {

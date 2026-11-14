@@ -33,6 +33,7 @@ let package = Package(
                 "VoIPManager.swift",
                 "NotificationManager.swift",
                 "AbrovaPushServiceExtension.swift",
+                "AbrovaPushConversation.swift",
                 "AbrovaPushShared.swift",
                 "Internal/RegistrationRefresh.swift",
                 "Utils/AbrovaPushDispatch.swift",
