@@ -4,7 +4,9 @@ import XCTest
 /// Notification channels: the message carries `channelId` and, for a Console channel, its definition.
 final class NotificationChannelTests: XCTestCase {
     private let serverJson = """
-    {"title":"t","body":"b","channelId":"offers","channel":{"id":"offers","v":3,"name":{"en":"Offers","fa":"پیشنهادها"},"importance":"low","vibrate":false,"sound":"none","ios":"passive"}}
+    {"title":"t","body":"b","channelId":"offers","channel":{"id":"offers","v":3,"name":{
+    "fa":"پیشنهادها",
+    "en":"Offers"},"importance":"low","vibrate":false,"sound":"none","ios":"passive"}}
     """
 
     func testDecodesChannelFromTheServerJson() throws {
