@@ -27,7 +27,7 @@ In Xcode: File → Add Package Dependencies → Enter:
 https://center.abrova.ir/abrova/abrova-push-ios-sdk.git
 ```
 
-Select version `0.1.21` or later.
+Select version `0.1.22` or later.
 
 ### CocoaPods
 
@@ -37,7 +37,7 @@ Add Abrova Center's spec repository at the top of your `Podfile` (the second `so
 source 'https://center.abrova.ir/abrova/specs.git'
 source 'https://cdn.cocoapods.org/'
 
-pod 'AbrovaPushSDK', '~> 0.1.21'
+pod 'AbrovaPushSDK', '~> 0.1.22'
 ```
 
 ## Quick Start
@@ -221,7 +221,7 @@ let config = AbrovaPushConfig.builder(apiKey: "your_key")
 | `autoConnect` | `true` | Auto-connect when app enters foreground |
 | `autoReconnect` | `true` | Auto-reconnect with exponential backoff |
 | `autoRefresh` | `true` | Refresh the registration on launch when it may be stale (see below) |
-| `sendDiagnostics` | `true` | Send counts of the SDK's own errors (by error code, no personal data) with its requests |
+| `sendDiagnostics` | `true` | Send counts of the SDK's own errors (by error code, no personal data) with its requests, with a short reason for each from a fixed list (for example `timeout`, `dns`, `tls`), the port and the network type (Wi-Fi/mobile). Never a message, address, user or device detail |
 | `appGroup` | `nil` | App Group shared with a Notification Service Extension, for delivery confirmation |
 
 ### Automatic registration refresh

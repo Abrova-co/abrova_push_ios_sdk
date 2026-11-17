@@ -294,7 +294,8 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
             appIdentifier: appIdentifier,
             subscriptionId: subscriptionId,
             endpointMemory: endpointMemory,
-            networkKind: { [weak self] in self?.connectivity.currentKind ?? .other }
+            networkKind: { [weak self] in self?.connectivity.currentKind ?? .other },
+            reportNet: { [weak self] in self?.connectivity.currentNet }
         )
         socketManager?.delegate = self
 
@@ -389,7 +390,7 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
     public func setAPNsToken(_ deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
         self.apnsToken = token
-        Log.d(AbrovaPush.TAG, "APNs token received: \(token)")
+        Log.d(AbrovaPush.TAG, "APNs token received (\(token.count) chars)")
         delegate?.abrovaPush(self, didReceiveAPNsToken: token)
 
         // Token requested by auto refresh (not by register()): register only
@@ -1630,9 +1631,10 @@ extension AbrovaPush: PNSocketManager.PNSocketManagerDelegate {
     }
 
     /// Every detailed error the SDK reports to the app is also counted for the
-    /// SDK self-report (`SdkDiagnostics`) — by its public code, nothing else.
+    /// SDK self-report (`SdkDiagnostics`) — by its public code, with a reason
+    /// word from a fixed list and the network type; nothing else.
     private func failDetailed(_ error: AbrovaPushError) {
-        SdkDiagnostics.shared.count(error.errorCode)
+        SdkDiagnostics.shared.count(error.errorCode, error: error, net: connectivity.currentNet)
         delegate?.abrovaPush(self, didFailWithDetailedError: error)
     }
 

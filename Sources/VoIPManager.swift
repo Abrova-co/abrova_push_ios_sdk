@@ -70,7 +70,7 @@ extension VoIPManager: PKPushRegistryDelegate {
         guard type == .voIP else { return }
 
         let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
-        print("AbrovaPush: VoIP token received: \(token)")
+        print("AbrovaPush: VoIP token received (\(token.count) chars)")
         delegate?.voipManager(self, didReceiveToken: token)
     }
 

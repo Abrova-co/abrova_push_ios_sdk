@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.22] - 2026-11-18
+
+### Added
+- With `sendDiagnostics` on (default), error reports now also say why a connection failed: a short reason from a fixed
+  list (for example timeout, dns, tls), the port and the network type (Wi-Fi/mobile). Never a message, address, user
+  or device detail.
+- New error code 1007 `connectionSetupFailed`: a connection that could not be set up before any network traffic.
+
+### Fixed
+- Connection errors are now included in the error reports.
+- A missing gateway host no longer stops the app; it is reported as `connectionSetupFailed`.
+
+### Security
+- Tokens are never written to logs.
+
 ## [0.1.21] - 2026-11-15
 
 ### Added

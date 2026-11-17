@@ -10,6 +10,7 @@ public enum AbrovaPushErrorCode: Int {
     case authenticationFailed = 1004
     case sslError = 1005
     case brokerUnavailable = 1006
+    case connectionSetupFailed = 1007
 
     // Subscription errors (1100-1199)
     case subscriptionFailed = 1100
@@ -55,6 +56,7 @@ public enum AbrovaPushErrorCode: Int {
         case .authenticationFailed: return "Authentication failed - invalid credentials"
         case .sslError: return "SSL/TLS handshake failed"
         case .brokerUnavailable: return "PN Protocol gateway is unavailable"
+        case .connectionSetupFailed: return "Connection could not be set up"
         case .subscriptionFailed: return "Failed to subscribe to topic"
         case .unsubscriptionFailed: return "Failed to unsubscribe from topic"
         case .invalidTopic: return "Invalid topic format"
@@ -155,7 +157,12 @@ public struct AbrovaPushError: LocalizedError {
     public static let variantNotFound = AbrovaPushError(errorCode: .variantNotFound)
 
     public static func serverError(_ statusCode: Int) -> AbrovaPushError {
-        return AbrovaPushError(errorCode: .serverError, details: "HTTP status code: \(statusCode)")
+        // The cause carries the status as a number for the SDK self-report.
+        return AbrovaPushError(
+            errorCode: .serverError,
+            details: "HTTP status code: \(statusCode)",
+            cause: SdkErrorReason.httpError(status: statusCode)
+        )
     }
 
     public static func registrationFailed(_ message: String) -> AbrovaPushError {

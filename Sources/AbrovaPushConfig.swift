@@ -96,8 +96,10 @@ public struct AbrovaPushConfig {
 
     /// Send the SDK's own error counts to Abrova (default true): per public `AbrovaPushErrorCode` number how often it
     /// happened, on the next ordinary API request in the `X-Abrova-SDK-Report`
-    /// header. Counts only — never a message, stack trace, user or device
-    /// detail. False: nothing is counted, kept or sent.
+    /// header, and why in `X-Abrova-SDK-Report-Reasons`: a short reason from a
+    /// fixed list (for example timeout, dns, tls), the port and the network
+    /// type. Never a message, stack trace, address, user or device detail.
+    /// False: nothing is counted, kept or sent.
     public let sendDiagnostics: Bool
 
     public init(

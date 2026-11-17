@@ -51,7 +51,8 @@ let package = Package(
                 "Internal/ConnectivityMonitor.swift",
                 "Internal/UserToken.swift",
                 "Internal/UserTokenStore.swift",
-                "Internal/SdkDiagnostics.swift"
+                "Internal/SdkDiagnostics.swift",
+                "Internal/SdkErrorReason.swift"
             ],
             resources: [.copy("PrivacyInfo.xcprivacy")]
         ),

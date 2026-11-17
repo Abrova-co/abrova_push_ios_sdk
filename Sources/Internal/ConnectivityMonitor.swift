@@ -12,6 +12,10 @@ internal final class ConnectivityMonitor {
     /// Current network type (main queue).
     private(set) var currentKind: NetworkKind = .other
 
+    /// Network type word for the SDK self-report (`wifi`, `cellular`,
+    /// `ethernet`, `vpn`, `none`, `other`); nil until the first path report (main queue).
+    private(set) var currentNet: String?
+
     private var monitor: NWPathMonitor?
     private let queue = DispatchQueue(label: "ir.abrova.push.connectivity")
     private var lastSatisfied: Bool?
@@ -26,7 +30,9 @@ internal final class ConnectivityMonitor {
             let satisfied = path.status == .satisfied
             let kind = ConnectivityMonitor.kind(of: path)
             let interfaces = path.availableInterfaces.map { $0.name }
+            let net = ConnectivityMonitor.reportNet(of: path)
             DispatchQueue.main.async {
+                self?.currentNet = net
                 self?.handle(satisfied: satisfied, kind: kind, interfaces: interfaces)
             }
         }
@@ -39,6 +45,7 @@ internal final class ConnectivityMonitor {
         monitor = nil
         lastSatisfied = nil
         lastInterfaces = []
+        currentNet = nil
     }
 
     private func handle(satisfied: Bool, kind: NetworkKind, interfaces: [String]) {
@@ -63,5 +70,27 @@ internal final class ConnectivityMonitor {
         if path.usesInterfaceType(.wifi) { return .wifi }
         if path.usesInterfaceType(.cellular) { return .cellular }
         return .other
+    }
+
+    static func reportNet(of path: NWPath) -> String {
+        guard path.status == .satisfied else { return "none" }
+        return reportNet(interfaceNames: path.availableInterfaces.map { $0.name },
+                         wifi: path.usesInterfaceType(.wifi),
+                         cellular: path.usesInterfaceType(.cellular),
+                         ethernet: path.usesInterfaceType(.wiredEthernet))
+    }
+
+    /// The first (preferred) interface decides VPN: a tunnel (`utun`, `ipsec`,
+    /// `ppp`) carries the traffic even while Wi-Fi or cellular sits under it.
+    /// The name is only looked at here, never sent.
+    static func reportNet(interfaceNames: [String], wifi: Bool, cellular: Bool, ethernet: Bool) -> String {
+        if let first = interfaceNames.first,
+           ["utun", "ipsec", "ppp"].contains(where: { first.hasPrefix($0) }) {
+            return "vpn"
+        }
+        if wifi { return "wifi" }
+        if cellular { return "cellular" }
+        if ethernet { return "ethernet" }
+        return "other"
     }
 }

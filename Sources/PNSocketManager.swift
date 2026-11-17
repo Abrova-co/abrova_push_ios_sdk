@@ -15,6 +15,8 @@ internal class PNSocketManager: NSObject {
 
     // Strong reference to connection listener to prevent deallocation
     private var connectionListener: ConnectionListener?
+    // Same for the error listener: the socket holds listeners weakly.
+    private var errorListener: PNErrorHandler?
 
     // Strong references to message handlers to prevent deallocation
     private var messageHandlers: [PNMessageHandler] = []
@@ -35,6 +37,10 @@ internal class PNSocketManager: NSObject {
 
     private let endpointMemory: MqttEndpointMemory
     private let networkKind: () -> NetworkKind
+    private let reportNet: () -> String?
+    private let diagnostics: SdkDiagnostics
+    /// Port of the endpoint the live connection uses (for a lost connection's report).
+    private var connectedPort: Int?
 
     init(
         config: AbrovaPushConfig,
@@ -43,7 +49,9 @@ internal class PNSocketManager: NSObject {
         appIdentifier: String = "_default",
         subscriptionId: String? = nil,
         endpointMemory: MqttEndpointMemory = MqttEndpointMemory(),
-        networkKind: @escaping () -> NetworkKind = { .other }
+        networkKind: @escaping () -> NetworkKind = { .other },
+        reportNet: @escaping () -> String? = { nil },
+        diagnostics: SdkDiagnostics = .shared
     ) {
         self.abrovaPushConfig = config
         self.appId = appId
@@ -52,6 +60,8 @@ internal class PNSocketManager: NSObject {
         self.subscriptionId = subscriptionId
         self.endpointMemory = endpointMemory
         self.networkKind = networkKind
+        self.reportNet = reportNet
+        self.diagnostics = diagnostics
         super.init()
     }
 
@@ -98,6 +108,14 @@ internal class PNSocketManager: NSObject {
             Log.w(PNSocketManager.TAG, "No PN token available - connection will likely fail with 'notAuthorized'")
         }
 
+        // Nothing to connect to: count it instead of letting the config builder stop the app.
+        guard !abrovaPushConfig.pnHost.trimmingCharacters(in: .whitespaces).isEmpty else {
+            Log.e(PNSocketManager.TAG, "Connection setup failed: no gateway host")
+            diagnostics.record(AbrovaPushErrorCode.connectionSetupFailed.rawValue,
+                               reason: "arg", port: nil, net: reportNet())
+            return
+        }
+
         let pnConfig = makePNConfig(clientId: clientId)
         Log.d(PNSocketManager.TAG, "connect() - endpoints: \(pnConfig.endpoints)")
 
@@ -109,10 +127,13 @@ internal class PNSocketManager: NSObject {
         connectionListener = ConnectionListener(manager: self)
         socket?.addConnectionListener(connectionListener!)
 
-        // Add error listener
-        socket?.addErrorListener(PNErrorHandler { error in
+        // Add error listener (strong reference kept, see errorListener)
+        let errorListener = PNErrorHandler { [weak self] error in
             Log.e(PNSocketManager.TAG, "\(error.message)")
-        })
+            self?.countSocketError(error)
+        }
+        self.errorListener = errorListener
+        socket?.addErrorListener(errorListener)
 
         socket?.open()
     }
@@ -122,6 +143,8 @@ internal class PNSocketManager: NSObject {
         socket?.close()
         socket = nil
         connectionListener = nil
+        errorListener = nil
+        connectedPort = nil
         messageHandlers.removeAll()
         hasSubscribedOnce = false  // Reset subscription state
         PNProtocolClient.shutdown()
@@ -147,9 +170,38 @@ internal class PNSocketManager: NSObject {
         socket.reconnect(force: force)
     }
 
+    /// Public code of a socket error for the SDK self-report (the same codes
+    /// the Android SDK counts). A connection attempt that could not even be
+    /// started is `connectionSetupFailed`.
+    static func errorCode(for error: PNError) -> AbrovaPushErrorCode {
+        switch error.code {
+        case .connectionFailed:
+            return error.message == PNErrorShape.failedToInitiate ? .connectionSetupFailed : .connectionFailed
+        case .connectionLost: return .connectionLost
+        case .authFailed: return .authenticationFailed
+        default: return .unknownError
+        }
+    }
+
+    /// Port for the report: the live connection's for a lost connection; for a
+    /// failed attempt the one all endpoints share (unknown when they differ).
+    func reportPort(for error: PNError) -> Int? {
+        if error.code == .connectionLost, let port = connectedPort { return port }
+        let ports = Set(orderedEndpoints().map { Int($0.port) })
+        return ports.count == 1 ? ports.first : nil
+    }
+
+    /// Counts a socket error with its reason, port and network type.
+    private func countSocketError(_ error: PNError) {
+        let code = Self.errorCode(for: error)
+        diagnostics.count(code, error: error, port: reportPort(for: error), net: reportNet())
+        if error.code == .connectionLost { connectedPort = nil }
+    }
+
     /// Remember the endpoint that just worked for this network type.
     private func rememberConnectedEndpoint() {
         guard let endpoint = socket?.connectedEndpoint else { return }
+        connectedPort = Int(endpoint.port)
         endpointMemory.remember(endpoint, for: networkKind())
     }
 
