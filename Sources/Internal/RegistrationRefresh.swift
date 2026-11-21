@@ -10,6 +10,8 @@ internal struct RegistrationFingerprint: Codable, Equatable {
     var apnsToken: String?
     var voipToken: String?
     var userId: String?
+    /// Whether the app's notifications are shown (nil: not known yet).
+    var notificationsEnabled: Bool? = nil
 }
 
 internal enum RegistrationRefresh {
@@ -24,6 +26,7 @@ internal enum RegistrationRefresh {
         case sdkChanged
         case tokenChanged
         case userChanged
+        case notificationsChanged
     }
 
     /// Decide whether launch should re-send the registration.
@@ -54,6 +57,7 @@ internal enum RegistrationRefresh {
         if let token = current.apnsToken, token != stored.apnsToken { return .tokenChanged }
         if let token = current.voipToken, token != stored.voipToken { return .tokenChanged }
         if stored.userId != current.userId { return .userChanged }
+        if let enabled = current.notificationsEnabled, enabled != stored.notificationsEnabled { return .notificationsChanged }
         // A clock moved backwards also counts as elapsed, so a bad clock can't
         // suppress refreshes forever.
         let elapsed = now.timeIntervalSince(lastSuccess)

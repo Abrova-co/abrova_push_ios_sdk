@@ -247,6 +247,16 @@ internal class PNSocketManager: NSObject {
         Log.d(PNSocketManager.TAG, "Subscribing to \(broadcastChannel)")
         socket?.stream(broadcastChannel, mode: .reliable, listener: broadcastHandler)
 
+        // In-app change signal: the project's in-app messages changed, fetch them again (no polling). It carries
+        // no push, so it never reaches the message delegate.
+        let signalChannel = "abrova_push/\(appId)/topic/\(PNSocketManager.inAppSignalTopic)"
+        let signalHandler = PNMessageHandler { _ in
+            Log.d(PNSocketManager.TAG, "In-app messages changed")
+            DispatchQueue.main.async { AbrovaPush.shared.handleInAppSignal() }
+        }
+        messageHandlers.append(signalHandler)
+        socket?.stream(signalChannel, mode: .reliable, listener: signalHandler)
+
         // Legacy stream — DEPRECATED, see comment above.
         let deviceHandler = makeHandler()
         messageHandlers.append(deviceHandler)
@@ -255,6 +265,9 @@ internal class PNSocketManager: NSObject {
 
         Log.d(PNSocketManager.TAG, "Subscribed to channels (sub=\(subscriptionChannel != nil), legacy device topic kept for compat)")
     }
+
+    /// Reserved topic the server uses to say the project's in-app messages changed.
+    static let inAppSignalTopic = "__in_app"
 
     var isConnected: Bool {
         return socket?.isConnected() ?? false

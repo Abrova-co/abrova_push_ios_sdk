@@ -124,6 +124,7 @@ internal class ApiClient {
         country: String? = nil,
         timezone: String? = nil,
         installId: String? = nil,
+        notificationsEnabled: Bool? = nil,
         completion: @escaping (Result<RegisterResponse, Error>) -> Void
     ) {
         guard let url = URL(string: "\(config.serverUrl)/devices/register") else {
@@ -155,8 +156,94 @@ internal class ApiClient {
         // device row a reinstall left behind. Omitted when it can't be computed
         // — never sent empty. Ignored by servers older than this SDK.
         if let installId = installId, !installId.isEmpty { body["installId"] = installId }
+        // Whether the phone shows the app's notifications, so the Console can say why a message was not seen.
+        // Left out for a while after a server from before this field refused it.
+        if let enabled = notificationsEnabled, !ApiClient.notificationsFieldRefusedRecently() {
+            body[ApiClient.notificationsEnabledField] = enabled
+        }
 
-        postDict(url: url, params: body, completion: completion)
+        postRegister(url: url, body: body, completion: completion)
+    }
+
+    static let notificationsEnabledField = "notificationsEnabled"
+    private static let notificationsFieldRefusedKey = "abrova_push.notifications_field_refused_at"
+    private static let notificationsFieldRetryInterval: TimeInterval = 24 * 60 * 60
+
+    static func notificationsFieldRefusedRecently(now: Date = Date()) -> Bool {
+        let at = UserDefaults.standard.double(forKey: notificationsFieldRefusedKey)
+        guard at > 0 else { return false }
+        let elapsed = now.timeIntervalSince1970 - at
+        return elapsed >= 0 && elapsed < notificationsFieldRetryInterval
+    }
+
+    /// A validation answer that names [field] as unknown ("property notificationsEnabled should not exist").
+    static func refusesField(_ body: Data?, field: String) -> Bool {
+        guard let body = body, let text = String(data: body, encoding: .utf8) else { return false }
+        return text.contains(field) && text.contains("should not exist")
+    }
+
+    /// POST /devices/register. An older server refuses notificationsEnabled (400 "should not exist"): the same
+    /// registration goes again without it, so the app keeps working whichever is deployed first.
+    private func postRegister(
+        url: URL,
+        body: [String: Any],
+        completion: @escaping (Result<RegisterResponse, Error>) -> Void
+    ) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(config.sdkHeaderValue, forHTTPHeaderField: AbrovaPushSDKInfo.headerName)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            DispatchQueue.main.async { completion(.failure(error)) }
+            return
+        }
+        guard body[ApiClient.notificationsEnabledField] != nil else {
+            executeRequest(request, completion: completion)
+            return
+        }
+        send(request) { [self] data, response, error in
+            if error == nil, let http = response as? HTTPURLResponse, http.statusCode == 400,
+               ApiClient.refusesField(data, field: ApiClient.notificationsEnabledField) {
+                Log.w(self.TAG, "Server does not take notificationsEnabled yet; registering without it")
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: ApiClient.notificationsFieldRefusedKey)
+                var without = body
+                without.removeValue(forKey: ApiClient.notificationsEnabledField)
+                self.postRegister(url: url, body: without, completion: completion)
+                return
+            }
+            self.finish(data: data, response: response, error: error, completion: completion)
+        }
+    }
+
+    /// The tail of executeRequest for an answer already received.
+    private func finish<R: Decodable>(
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        completion: @escaping (Result<R, Error>) -> Void
+    ) {
+        if let error = error {
+            DispatchQueue.main.async { completion(.failure(error)) }
+            return
+        }
+        guard let http = response as? HTTPURLResponse else {
+            DispatchQueue.main.async { completion(.failure(AbrovaPushError.invalidResponse)) }
+            return
+        }
+        guard (200...299).contains(http.statusCode), let data = data else {
+            Log.e(TAG, "Server error: \(http.statusCode)")
+            DispatchQueue.main.async { completion(.failure(AbrovaPushError.serverError(http.statusCode))) }
+            return
+        }
+        do {
+            let decoded = try JSONDecoder().decode(R.self, from: data)
+            DispatchQueue.main.async { completion(.success(decoded)) }
+        } catch {
+            DispatchQueue.main.async { completion(.failure(error)) }
+        }
     }
 
     /// Unregister device from server
@@ -268,6 +355,60 @@ internal class ApiClient {
         }
 
         postRaw(url: url, params: params, completion: completion)
+    }
+
+    /// The answer of /in-app/fetch: [body] is nil when the server said 304 to [etag] (nothing changed since).
+    struct InAppFetchResult {
+        let body: String?
+        let etag: String?
+        var notModified: Bool { body == nil }
+    }
+
+    /// Fetches in-app messages. With the ETag of the last answer the server says 304 while nothing changed,
+    /// which costs almost nothing.
+    func fetchInAppMessages(
+        params: [String: Any],
+        etag: String?,
+        completion: @escaping (Result<InAppFetchResult, Error>) -> Void
+    ) {
+        guard let url = URL(string: "\(config.serverUrl)/in-app/fetch") else {
+            completion(.failure(AbrovaPushError.invalidUrl))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(config.sdkHeaderValue, forHTTPHeaderField: AbrovaPushSDKInfo.headerName)
+        if let etag = etag, !etag.isEmpty { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: params)
+        } catch {
+            DispatchQueue.main.async { completion(.failure(error)) }
+            return
+        }
+        send(request) { [self] data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
+            }
+            guard let http = response as? HTTPURLResponse else {
+                DispatchQueue.main.async { completion(.failure(AbrovaPushError.invalidResponse)) }
+                return
+            }
+            if http.statusCode == 304 {
+                Log.d(self.TAG, "In-app messages unchanged")
+                DispatchQueue.main.async { completion(.success(InAppFetchResult(body: nil, etag: etag))) }
+                return
+            }
+            guard (200...299).contains(http.statusCode), let data = data else {
+                DispatchQueue.main.async { completion(.failure(AbrovaPushError.serverError(http.statusCode))) }
+                return
+            }
+            let text = String(data: data, encoding: .utf8) ?? ""
+            let newTag = http.value(forHTTPHeaderField: "ETag")
+            DispatchQueue.main.async { completion(.success(InAppFetchResult(body: text, etag: newTag))) }
+        }
     }
 
     /// Record in-app message impression

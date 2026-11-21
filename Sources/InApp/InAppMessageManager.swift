@@ -9,6 +9,10 @@ public class InAppMessageManager {
     private static let KEY_SESSION_COUNT = "session_count"
     private static let KEY_CACHED_MESSAGES = "cached_messages"
     private static let KEY_LAST_FETCH = "last_fetch"
+    private static let KEY_ETAG = "etag"
+
+    /// After the change signal, wait a random time up to this, so a whole project's phones don't fetch at once.
+    static let signalJitterSeconds: Double = 60
     private static let CACHE_TTL_MS: TimeInterval = 5 * 60 // 5 minutes
 
     private let apiClient: ApiClient
@@ -120,18 +124,29 @@ public class InAppMessageManager {
 
             Log.d(InAppMessageManager.TAG, "Fetching in-app messages with params: \(params)")
 
-            self.apiClient.getInAppMessages(params: params) { [weak self] result in
+            // The ETag of the cached list: the server answers 304 while nothing changed.
+            let etagKey = "\(InAppMessageManager.PREFS_NAME).\(InAppMessageManager.KEY_ETAG)"
+            let etag = self.cachedMessages.isEmpty ? nil : self.prefs.string(forKey: etagKey)
+            self.apiClient.fetchInAppMessages(params: params, etag: etag) { [weak self] result in
                 guard let self = self else { return }
 
                 switch result {
-                case .success(let json):
-                    Log.d(InAppMessageManager.TAG, "API response received")
-                    let messages = self.parseMessages(json)
-                    self.cachedMessages = messages
-                    self.saveCachedMessages()
-                    // Save timestamp on background queue
+                case .success(let answer) where answer.notModified:
                     AbrovaPushDispatch.io {
                         self.prefs.set(Date().timeIntervalSince1970, forKey: "\(InAppMessageManager.PREFS_NAME).\(InAppMessageManager.KEY_LAST_FETCH)")
+                    }
+                    Log.d(InAppMessageManager.TAG, "In-app messages unchanged (\(self.cachedMessages.count))")
+                    completion?(self.filterAvailableMessages(self.cachedMessages))
+
+                case .success(let answer):
+                    Log.d(InAppMessageManager.TAG, "API response received")
+                    let messages = self.parseMessages(answer.body ?? "")
+                    self.cachedMessages = messages
+                    self.saveCachedMessages()
+                    // Save timestamp and ETag on background queue
+                    AbrovaPushDispatch.io {
+                        self.prefs.set(Date().timeIntervalSince1970, forKey: "\(InAppMessageManager.PREFS_NAME).\(InAppMessageManager.KEY_LAST_FETCH)")
+                        self.prefs.set(answer.etag, forKey: etagKey)
                     }
 
                     Log.d(InAppMessageManager.TAG, "Fetched \(messages.count) in-app messages")
@@ -195,6 +210,23 @@ public class InAppMessageManager {
         Log.d(InAppMessageManager.TAG, "Triggering on_session_start")
         incrementSessionCount()
         triggerMessages(triggerType: .onSessionStart)
+    }
+
+    /// The server said the project's in-app messages changed (published, edited, paused). After a random wait,
+    /// fetch them again and, while the app is active, show one whose trigger is session start, as if a session
+    /// had just started (without counting a new session).
+    public func onServerSignal() {
+        let wait = Double.random(in: 0..<InAppMessageManager.signalJitterSeconds)
+        Log.d(InAppMessageManager.TAG, "In-app change signal: fetching in \(Int(wait)) s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            self?.fetchMessages { [weak self] messages in
+                DispatchQueue.main.async {
+                    guard let self = self, !self.isShowingMessage else { return }
+                    guard UIApplication.shared.applicationState == .active else { return }
+                    self.findAndShowMessage(messages: messages, triggerType: .onSessionStart, eventName: nil)
+                }
+            }
+        }
     }
 
     /// Show a specific message manually
@@ -383,6 +415,9 @@ public class InAppMessageManager {
 
                 // Notify callback - wrapper will show its own UI
                 self.callback?.inAppMessageReady(message)
+                // The wrapper owns the screen from here (it replaces or queues messages itself); without this
+                // no later message could be handed over in this session.
+                self.isShowingMessage = false
             } else {
                 // No callback - show native iOS UI
                 Log.d(InAppMessageManager.TAG, "No callback set - showing native iOS UI")

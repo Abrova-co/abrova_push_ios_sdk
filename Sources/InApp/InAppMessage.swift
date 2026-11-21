@@ -108,6 +108,8 @@ public struct InAppMessageContent: Codable {
     public let backgroundColor: String?
     public let textColor: String?
     public let buttons: [InAppButton]
+    /// Banner only: "top" (default) or "bottom", as chosen in the Console.
+    public let position: String?
 
     public init(
         title: String,
@@ -115,7 +117,8 @@ public struct InAppMessageContent: Codable {
         imageUrl: String? = nil,
         backgroundColor: String? = nil,
         textColor: String? = nil,
-        buttons: [InAppButton] = []
+        buttons: [InAppButton] = [],
+        position: String? = nil
     ) {
         self.title = title
         self.body = body
@@ -123,6 +126,14 @@ public struct InAppMessageContent: Codable {
         self.backgroundColor = backgroundColor
         self.textColor = textColor
         self.buttons = buttons
+        self.position = position
+    }
+
+    /// The same content with the banner position set where it has none (translations carry no position).
+    func withPosition(_ fallback: String?) -> InAppMessageContent {
+        guard position == nil, let fallback = fallback else { return self }
+        return InAppMessageContent(title: title, body: body, imageUrl: imageUrl, backgroundColor: backgroundColor,
+                                   textColor: textColor, buttons: buttons, position: fallback)
     }
 
     public static func fromJson(_ json: [String: Any]) -> InAppMessageContent? {
@@ -142,7 +153,8 @@ public struct InAppMessageContent: Codable {
             imageUrl: json["imageUrl"] as? String,
             backgroundColor: json["backgroundColor"] as? String,
             textColor: json["textColor"] as? String,
-            buttons: buttons
+            buttons: buttons,
+            position: (json["position"] as? String).flatMap { $0 == "top" || $0 == "bottom" ? $0 : nil }
         )
     }
 
@@ -155,6 +167,7 @@ public struct InAppMessageContent: Codable {
         if let imageUrl = imageUrl { dict["imageUrl"] = imageUrl }
         if let backgroundColor = backgroundColor { dict["backgroundColor"] = backgroundColor }
         if let textColor = textColor { dict["textColor"] = textColor }
+        if let position = position { dict["position"] = position }
         return dict
     }
 }
@@ -338,12 +351,12 @@ public struct InAppMessage: Codable {
 
         // Try exact match first
         if let exact = localizations.first(where: { $0.locale.lowercased() == locale }) {
-            return exact.content
+            return exact.content.withPosition(content.position)
         }
 
         // Try language match
         if let lang = localizations.first(where: { $0.locale.lowercased().hasPrefix(languageCode) }) {
-            return lang.content
+            return lang.content.withPosition(content.position)
         }
 
         // Fall back to default content

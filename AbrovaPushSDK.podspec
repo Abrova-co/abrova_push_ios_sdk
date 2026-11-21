@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AbrovaPushSDK'
-  s.version          = '0.1.22'
+  s.version          = '0.1.23'
   s.summary          = 'Abrova Push Notification SDK for iOS'
   s.description      = <<-DESC
     Abrova Push is a comprehensive push notification SDK for iOS with support for:

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.23] - 2026-11-22
+### Added
+- Notifications turned off: `AbrovaPush.shared.areNotificationsEnabled(completion:)`,
+  `setNotificationPermissionListener(_:)` (checked at `initialize` and each time the app becomes active, e.g. back
+  from Settings) and `openNotificationSettings()` (this app's notification settings on iOS 16+, the app's settings
+  page before). The SDK also tells Abrova, so the Console shows these devices and why their messages were not seen.
+- In-app messages update at once: when you publish or change one in the Console, apps that are open fetch the list
+  again within a minute and show a message whose trigger is session start. Unchanged lists cost almost nothing.
+- Banner position: `InAppMessageContent.position` (`top` or `bottom`, as chosen in the Console); translations keep it.
+### Changed
+- The built-in in-app display looks like the Console's preview: image 2:1 in a modal and full screen, 3:1 in a card,
+  a small square in a banner; a banner at the top or the bottom with its buttons; a card at the bottom without dimming;
+  close button on the panel corner (left for right-to-left text); button styles as in the Console.
+- The registration refresh at launch also runs when notifications are not allowed (it never asks for permission).
+### Fixed
+- A banner or card no longer dims and blocks the app behind it.
+- After a message was handed to a Flutter or React Native app, no later in-app message could show in that session.
+
 ## [0.1.22] - 2026-11-18
 
 ### Added

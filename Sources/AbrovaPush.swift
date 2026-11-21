@@ -70,6 +70,10 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
     /// the main queue, together with the delegate's `didFailWithAuthError`.
     public var onAuthError: ((AbrovaPushAuthErrorEvent) -> Void)?
 
+    /// Whether the app's notifications are shown, as last checked (nil before the first check).
+    private var notificationsEnabledNow: Bool?
+    private var notificationPermissionListener: ((Bool) -> Void)?
+
     /// An explicit register() is in progress; auto refresh stays out of its way.
     private var explicitRegisterInFlight = false
     /// Auto refresh asked iOS for a push token and is waiting to decide.
@@ -150,6 +154,60 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
 
         // Keep the server's device record fresh without the app calling register().
         startAutoRefreshIfNeeded()
+
+        // First notifications on/off check (later ones each time the app becomes active).
+        checkNotificationPermission()
+    }
+
+    // MARK: - Notifications turned off
+
+    /// Whether the app's notifications are shown: false when the user chose "Don't Allow" or turned them off in
+    /// Settings, or before they answered. Pushes still arrive then, but iOS does not show them. Abrova also tells
+    /// the server, so the Console shows these devices and why their messages were not seen. Called on the main
+    /// queue.
+    public func areNotificationsEnabled(completion: @escaping (Bool) -> Void) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let enabled = AbrovaPush.isAuthorized(settings.authorizationStatus)
+            DispatchQueue.main.async { completion(enabled) }
+        }
+    }
+
+    /// Called on the main queue when notifications are turned on or off (checked at initialize() and each time
+    /// the app becomes active, e.g. back from Settings). Show your own "Turn on notifications" hint here and call
+    /// openNotificationSettings() from it. nil removes the listener.
+    public func setNotificationPermissionListener(_ listener: ((Bool) -> Void)?) {
+        notificationPermissionListener = listener
+    }
+
+    /// Opens this app's notification settings, where the user can turn notifications back on (an app can't do it
+    /// itself, and iOS asks only once). Returns false if it could not be opened.
+    @discardableResult
+    public func openNotificationSettings() -> Bool {
+        let link: String
+        if #available(iOS 16.0, *) {
+            link = UIApplication.openNotificationSettingsURLString
+        } else {
+            link = UIApplication.openSettingsURLString
+        }
+        guard let url = URL(string: link), UIApplication.shared.canOpenURL(url) else { return false }
+        UIApplication.shared.open(url)
+        return true
+    }
+
+    /// Tells the listener, and the server, when notifications were turned on or off since the last check.
+    private func checkNotificationPermission() {
+        areNotificationsEnabled { [weak self] enabled in
+            guard let self = self, self.notificationsEnabledNow != enabled else { return }
+            let before = self.notificationsEnabledNow
+            self.notificationsEnabledNow = enabled
+            self.notificationPermissionListener?(enabled)
+            // First check of this process: the register at start (or its refresh) carries the value.
+            guard before != nil, self.isInitialized,
+                  UserDefaults.standard.bool(forKey: self.prefsKey(AbrovaPush.KEY_HAS_REGISTERED)),
+                  !self.explicitRegisterInFlight else { return }
+            Log.d(AbrovaPush.TAG, "Notifications turned \(enabled ? "on" : "off"); updating the registration")
+            self.registerDevice(userId: self.userId, metadata: nil, pushToken: self.voipToken, apnsToken: self.apnsToken)
+        }
     }
 
     /// Set log level for SDK logging
@@ -594,6 +652,11 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         return inAppMessageManager!
     }
 
+    /// The in-app change signal arrived: only an app that uses in-app messages (has the manager) fetches again.
+    func handleInAppSignal() {
+        inAppMessageManager?.onServerSignal()
+    }
+
     /// Set the current view controller for in-app message display
     public func setCurrentViewController(_ viewController: UIViewController?) {
         getInAppMessageManager().setCurrentViewController(viewController)
@@ -965,12 +1028,12 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
 
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
             guard let self = self else { return }
-            guard AbrovaPush.isAuthorized(settings.authorizationStatus) else {
-                Log.d(AbrovaPush.TAG, "Auto refresh skipped - notification permission not granted")
-                return
-            }
+            // Also with notifications off: the server should know (the Console says why messages were not seen).
+            // Asking for the push token needs no permission and never prompts.
+            let enabled = AbrovaPush.isAuthorized(settings.authorizationStatus)
 
             DispatchQueue.main.async {
+                self.notificationsEnabledNow = enabled
                 guard !self.explicitRegisterInFlight, !self.autoRefreshPending else { return }
                 self.autoRefreshPending = true
 
@@ -1028,7 +1091,8 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
                 ?? AbrovaPushSDKInfo.headerValue(name: AbrovaPushSDKInfo.name, version: AbrovaPushSDKInfo.version),
             apnsToken: apnsToken,
             voipToken: voipToken,
-            userId: userId
+            userId: userId,
+            notificationsEnabled: notificationsEnabledNow
         )
     }
 
@@ -1205,6 +1269,8 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         // Back from Control Center, a call, an alert or the background: make
         // sure the socket is up (or probe it) without waiting for the backoff.
         scheduleFastReconnect(force: false)
+        // Back from Settings (or the permission alert): notifications may have been turned on or off.
+        if isInitialized { checkNotificationPermission() }
     }
 
     @objc private func appDidEnterBackground() {
@@ -1377,7 +1443,8 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
             language: attributes.language,
             country: attributes.country,
             timezone: attributes.timezone,
-            installId: InstallId.current
+            installId: InstallId.current,
+            notificationsEnabled: notificationsEnabledNow
         ) { [weak self] result in
             guard let self = self else { return }
 
