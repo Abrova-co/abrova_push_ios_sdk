@@ -4,6 +4,12 @@ import UIKit
 /// Manages in-app messages: fetching, caching, triggering, and tracking
 public class InAppMessageManager {
     private static let TAG = "InApp"
+
+    /// Two app-open (or session-start) triggers this close together are one moment: the SDK triggers them by itself
+    /// (autoInAppTriggers) and an app may call them too; no double show, no double session.
+    static let repeatTriggerSeconds: TimeInterval = 5
+    private var lastAppOpenAt: Date?
+    private var lastSessionStartAt: Date?
     private static let PREFS_NAME = "abrova_push_inapp"
     private static let KEY_IMPRESSIONS = "impressions"
     private static let KEY_SESSION_COUNT = "session_count"
@@ -195,6 +201,12 @@ public class InAppMessageManager {
 
     /// Trigger messages for app open event
     public func triggerOnAppOpen() {
+        let now = Date()
+        if let last = lastAppOpenAt, now.timeIntervalSince(last) < InAppMessageManager.repeatTriggerSeconds {
+            Log.d(InAppMessageManager.TAG, "on_app_open already triggered just now: skipped")
+            return
+        }
+        lastAppOpenAt = now
         Log.d(InAppMessageManager.TAG, "Triggering on_app_open")
         triggerMessages(triggerType: .onAppOpen)
     }
@@ -207,6 +219,12 @@ public class InAppMessageManager {
 
     /// Trigger messages for session start
     public func triggerOnSessionStart() {
+        let now = Date()
+        if let last = lastSessionStartAt, now.timeIntervalSince(last) < InAppMessageManager.repeatTriggerSeconds {
+            Log.d(InAppMessageManager.TAG, "on_session_start already triggered just now: skipped")
+            return
+        }
+        lastSessionStartAt = now
         Log.d(InAppMessageManager.TAG, "Triggering on_session_start")
         incrementSessionCount()
         triggerMessages(triggerType: .onSessionStart)

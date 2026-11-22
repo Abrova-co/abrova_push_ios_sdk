@@ -102,6 +102,16 @@ public struct AbrovaPushConfig {
     /// False: nothing is counted, kept or sent.
     public let sendDiagnostics: Bool
 
+    /// Ask for permission to show notifications during `register()` (default true). False: the SDK never asks; ask
+    /// at the moment that suits your app with `AbrovaPush.shared.requestNotificationPermission(completion:)`.
+    public let askNotificationPermission: Bool
+
+    /// Show in-app messages whose trigger is "App open" or "Session start" by themselves (default true): "App open"
+    /// each time the app becomes active, "Session start" when it comes back after 30 minutes or more (and at its
+    /// first start). Calling `triggerInAppOnAppOpen()` / `triggerInAppOnSessionStart()` as well does no harm: a
+    /// second trigger within a few seconds is ignored. False: only your own calls trigger them.
+    public let autoInAppTriggers: Bool
+
     public init(
         apiKey: String,
         pnHost: String = "",
@@ -121,9 +131,13 @@ public struct AbrovaPushConfig {
         wrapperSdkName: String? = nil,
         wrapperSdkVersion: String? = nil,
         tokenProvider: AbrovaPushTokenProvider? = nil,
-        sendDiagnostics: Bool = true
+        sendDiagnostics: Bool = true,
+        askNotificationPermission: Bool = true,
+        autoInAppTriggers: Bool = true
     ) {
         self.apiKey = apiKey
+        self.askNotificationPermission = askNotificationPermission
+        self.autoInAppTriggers = autoInAppTriggers
         self.tokenProvider = tokenProvider
         self.sendDiagnostics = sendDiagnostics
         self.appGroup = appGroup
@@ -212,6 +226,8 @@ public struct AbrovaPushConfig {
         private var wrapperSdkVersion: String? = nil
         private var tokenProvider: AbrovaPushTokenProvider? = nil
         private var sendDiagnostics: Bool = true
+        private var askNotificationPermission: Bool = true
+        private var autoInAppTriggers: Bool = true
 
         public init(apiKey: String) {
             self.apiKey = apiKey
@@ -221,6 +237,22 @@ public struct AbrovaPushConfig {
         @discardableResult
         public func tokenProvider(_ provider: @escaping AbrovaPushTokenProvider) -> Builder {
             self.tokenProvider = provider
+            return self
+        }
+
+        /// Ask for notification permission during `register()` (default: true). See
+        /// `AbrovaPushConfig.askNotificationPermission`.
+        @discardableResult
+        public func askNotificationPermission(_ enabled: Bool) -> Builder {
+            self.askNotificationPermission = enabled
+            return self
+        }
+
+        /// Show "App open" / "Session start" in-app messages by themselves (default: true). See
+        /// `AbrovaPushConfig.autoInAppTriggers`.
+        @discardableResult
+        public func autoInAppTriggers(_ enabled: Bool) -> Builder {
+            self.autoInAppTriggers = enabled
             return self
         }
 
@@ -344,7 +376,9 @@ public struct AbrovaPushConfig {
                 wrapperSdkName: wrapperSdkName,
                 wrapperSdkVersion: wrapperSdkVersion,
                 tokenProvider: tokenProvider,
-                sendDiagnostics: sendDiagnostics
+                sendDiagnostics: sendDiagnostics,
+                askNotificationPermission: askNotificationPermission,
+                autoInAppTriggers: autoInAppTriggers
             )
         }
     }

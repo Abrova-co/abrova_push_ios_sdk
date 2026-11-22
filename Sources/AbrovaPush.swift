@@ -137,6 +137,13 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         shareDeviceIdWithExtension()
 
         Log.d(AbrovaPush.TAG, "Initialized with deviceId: \(deviceId ?? "nil"), appId: \(appId ?? "nil")")
+        // Initialized while the app is already active (a cross-platform plugin starts late): the first "became
+        // active" was missed, so run the in-app triggers now.
+        if config.autoInAppTriggers {
+            DispatchQueue.main.async { [weak self] in
+                if UIApplication.shared.applicationState == .active { self?.runForegroundTriggers() }
+            }
+        }
 
         // Set as UNUserNotificationCenter delegate for foreground notification display
         if config.showNotificationInForeground {
@@ -169,6 +176,16 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let enabled = AbrovaPush.isAuthorized(settings.authorizationStatus)
             DispatchQueue.main.async { completion(enabled) }
+        }
+    }
+
+    /// Asks the user to allow notifications (iOS shows its alert once; after that it answers at once with what the
+    /// user chose). For apps that set `askNotificationPermission: false` and ask at their own moment. Called back
+    /// on the main queue with whether they are allowed.
+    public func requestNotificationPermission(completion: ((Bool) -> Void)? = nil) {
+        NotificationManager.shared.requestPermission { [weak self] granted in
+            if self?.isInitialized == true { self?.checkNotificationPermission() }
+            completion?(granted)
         }
     }
 
@@ -250,8 +267,11 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         explicitRegisterInFlight = true
         autoRefreshPending = false
 
-        // Request notification permission
-        NotificationManager.shared.requestPermission { [weak self] granted in
+        // Ask for notification permission, unless the app asks itself (askNotificationPermission = false).
+        let permission: (@escaping (Bool) -> Void) -> Void = config.askNotificationPermission
+            ? NotificationManager.shared.requestPermission
+            : NotificationManager.shared.checkPermission
+        permission { [weak self] granted in
             guard let self = self else { return }
 
             if !granted {
@@ -1271,9 +1291,35 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
         scheduleFastReconnect(force: false)
         // Back from Settings (or the permission alert): notifications may have been turned on or off.
         if isInitialized { checkNotificationPermission() }
+        // In-app "App open" / "Session start" by themselves.
+        if isInitialized, config?.autoInAppTriggers == true { runForegroundTriggers() }
+    }
+
+    /// Back after this long away: a new session (the desktop SDK's sessionTimeout default).
+    private static let sessionTimeout: TimeInterval = 30 * 60
+    private var backgroundSince: Date?
+    private var sessionStartedInProcess = false
+    private var foregroundTriggerPending = false
+
+    /// "App open", and "Session start" at the first one and after `sessionTimeout` away. A brand-new install waits
+    /// for its first registration (the server doesn't know it before).
+    private func runForegroundTriggers() {
+        guard subscriptionId != nil else {
+            foregroundTriggerPending = true
+            return
+        }
+        foregroundTriggerPending = false
+        let away = backgroundSince.map { Date().timeIntervalSince($0) >= AbrovaPush.sessionTimeout } ?? false
+        let manager = getInAppMessageManager()
+        if !sessionStartedInProcess || away {
+            sessionStartedInProcess = true
+            manager.triggerOnSessionStart()
+        }
+        manager.triggerOnAppOpen()
     }
 
     @objc private func appDidEnterBackground() {
+        backgroundSince = Date()
         Log.d(AbrovaPush.TAG, "App entered background")
         delegate?.abrovaPush(self, didChangeAppState: AppState(isInForeground: false))
 
@@ -1470,6 +1516,11 @@ public class AbrovaPush: NSObject, UNUserNotificationCenterDelegate {
                     self.subscriptionId = subId
                     UserDefaults.standard.set(subId, forKey: "\(AbrovaPush.PREFS_NAME).\(AbrovaPush.KEY_SUBSCRIPTION_ID)")
                     Log.d(AbrovaPush.TAG, "Stored subscriptionId: \(subId)")
+                    if self.foregroundTriggerPending {
+                        DispatchQueue.main.async {
+                            if UIApplication.shared.applicationState == .active { self.runForegroundTriggers() }
+                        }
+                    }
                 }
 
                 // Update PN Protocol config from server response (host, port, secure, JWT token)

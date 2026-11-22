@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AbrovaPushSDKExtension'
-  s.version          = '0.1.23'
+  s.version          = '0.1.24'
   s.summary          = 'Delivery confirmation for Abrova Push, for a Notification Service Extension.'
 
   s.description      = <<-DESC

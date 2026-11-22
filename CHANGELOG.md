@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.24] - 2026-11-23
+### Added
+- In-app messages whose trigger is "App open" or "Session start" now show by themselves, as in the computer SDK:
+  "App open" each time the app becomes active, "Session start" at its first start and when it comes back after
+  30 minutes or more. Before, they showed only if the app called `triggerInAppOnAppOpen()` /
+  `triggerInAppOnSessionStart()` itself. Apps that still call them are fine: a second trigger within a few seconds is
+  ignored, so nothing shows twice. `autoInAppTriggers: false` (init or builder) keeps the old behaviour.
+- `askNotificationPermission: false` (init or builder): `register()` no longer asks for permission to show
+  notifications; ask at the moment that suits your app with `requestNotificationPermission(completion:)`. Default
+  `true` (unchanged).
+
 ## [0.1.23] - 2026-11-22
 ### Added
 - Notifications turned off: `AbrovaPush.shared.areNotificationsEnabled(completion:)`,
